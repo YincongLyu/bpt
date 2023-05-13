@@ -24,7 +24,7 @@ endif
 
 #OBJ = bpt.o util/cli.o
 #PRGNAME = bpt_cli
-OBJ = bpt.o
+OBJ = bpt.o main.o
 PRGNAME = bpt
 
 #DUMP_OBJ = bpt.o util/dump_numbers.o
