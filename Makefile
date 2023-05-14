@@ -24,7 +24,7 @@ endif
 
 #OBJ = bpt.o util/cli.o
 #PRGNAME = bpt_cli
-OBJ = bpt.o main.o
+OBJ = bpt.o test.o
 PRGNAME = bpt
 
 #DUMP_OBJ = bpt.o util/dump_numbers.o
@@ -32,6 +32,8 @@ PRGNAME = bpt
 
 #all: $(DUMPPRGNAME) $(PRGNAME)
 all: ${PRGNAME}
+run:
+	./bpt
 # test:
 # 	@-rm bpt_unit_test
 # 	$(MAKE) TEST="-DUNIT_TEST" bpt_unit_test
@@ -74,6 +76,7 @@ bpt: $(OBJ)
 
 # Deps (use make dep to generate this)
 bpt.o: bpt.cc bpt.h
+test.o: test.cc bpt.h
 #bpt.o: bpt.cc bpt.h predefined.h
 #cli.o: cli.cc bpt.h predefined.h
 #dump_numbers.o: dump_numbers.cc bpt.h predefined.h
