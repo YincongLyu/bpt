@@ -2,6 +2,19 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#define BINARY_SEARCH(array, n, key, i, ret) {\
+    size_t l = 0, r = n;\
+    size_t mid;\
+    while (l < n) {\
+        mid = l + ((r - l) >> 1);\
+        ret = keycmp(key, array[mid].key);\
+        if (ret < 0) r = mid;\
+        else if (ret > 0) l = mid;\
+        else break;\
+    }\
+    i = mid;\
+}
+
 namespace bpt {
 
 /**
@@ -13,7 +26,7 @@ bplus_tree::bplus_tree(const char *p, bool force_empty) : fp(NULL), fp_level(0) 
     bzero(path, sizeof(path));
     strcpy(path, p);
 
-    FILE *fp = fopen(path, "r+");
+    FILE *fp = fopen(path, "r");
     fclose(fp); // 打开后关闭，但这里是否释放了fp对应的内存空间？
     if (!fp || force_empty) {
         //如果文件不存在的话，就新建一颗空树
@@ -29,8 +42,8 @@ bplus_tree::bplus_tree(const char *p, bool force_empty) : fp(NULL), fp_level(0) 
 */
 void bplus_tree::init_from_empty() {
     meta.order = BP_ORDER;
-    // 为什么*64？预分配64个内部节点
-    meta.index_size = sizeof(internal_node_t) * 64;
+    // 预分配128个内部节点
+    meta.index_size = sizeof(internal_node_t) * 128;
     meta.value_size = sizeof(value_t);
     meta.key_size = sizeof(key_t);
     meta.internal_node_num = meta.leaf_node_num = meta.height = 0;
@@ -50,17 +63,26 @@ off_t bplus_tree::search_leaf_offset(const key_t &key) const {
     // 这里模拟存储是连续的数组，leaf位置跟在64个内部节点后面
     off_t offset = sizeof(meta_t) + meta.index_size;
     int height = meta.height;
+    off_t org = sizeof(meta_t);
     // 先走到leaf节点
     while (height > 0) {
-        //TODO search
+        // 获得当前node, 走过meta的offset
+        internal_node_t node;
+        map_index(&node, org);
+
+        size_t i;
+        int ret;
+        BINARY_SEARCH(node.children, node.n, key, i, ret);
+        org += node.children[i].child;//但这里也只有一个internal_node
+
         --height;
     }
     return offset;
 }
 
-void bplus_tree::open_file(const char *mode) const {
+void bplus_tree::open_file() const {
     if (fp_level == 0) {
-        fp = fopen(path, mode);
+        fp = fopen(path, "rb+");
     }
     ++fp_level;
 }
@@ -137,12 +159,13 @@ value_t bplus_tree::search(const key_t &key) const {
     size_t i;
     int ret;
     // 在当前的leaf block里顺序遍历，O(n)比较key值
-    for (i = 0; i < leaf.n; ++i) {
-        //又已知已经有序，到第一个>=key的可以提前停止
-        // FIX
-        if ((ret = keycmp(leaf.children[i].key, key)) > 0)
-            break;
-    }
+    // for (i = 0; i < leaf.n; ++i) {
+    //     //又已知已经有序，到第一个>=key的可以提前停止
+    //     // FIX
+    //     if ((ret = keycmp(leaf.children[i].key, key)) > 0)
+    //         break;
+    // }
+    BINARY_SEARCH(leaf.children, leaf.n, key, i, ret);
     // 这里>情况终止的value_t()是什么？
     return ret == 0 ? leaf.children[i].value : value_t();
 }
@@ -159,10 +182,12 @@ value_t bplus_tree::insert(const key_t &key, value_t value) {
         size_t i;
         int ret = -1;
         // 插入到哪里?先顺序遍历
-        for (i = 0; i < leaf.n; ++i) {
-            if ((ret = keycmp(leaf.children[i].key, key)) > 0)
-                break;
-        }
+        // for (i = 0; i < leaf.n; ++i) {
+        //     if ((ret = keycmp(leaf.children[i].key, key)) > 0)
+        //         break;
+        // }
+        BINARY_SEARCH(leaf.children, leaf.n, key, i, ret);
+
         // if 已经有相同的key了，直接返回value，不允许插入
         if (ret == 0) return leaf.children[i].value;
         // 如果插入的pos在中间，则需移动[i+1, leaf.n)之间的record,往后搬

@@ -43,7 +43,7 @@ struct meta_t {
 // 内部节点的index segment
 struct index_t {
     key_t key;
-    size_t child; // offset，child指什么?
+    off_t child; // the offset of index in one internal node
 };
 
 // 内部节点的block组织形式，一个block指向下面的孩子节点
@@ -102,7 +102,7 @@ public:
     // multi-level文件操作 multable关键词突破const的限制，可处于一种可变状态
     mutable FILE *fp;
     mutable int fp_level; // 这参数啥意思？
-    inline void open_file(const char *mode = "rb+") const;
+    inline void open_file() const;
     inline void close_file() const;
 
     // 读写data 和disk的交互都是站在tree的逻辑视角，以node为单位
