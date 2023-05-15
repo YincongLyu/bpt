@@ -4,30 +4,9 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <memory.h>
 
+#include "predefined.h"
 namespace bpt {
-
-// 扩展key_t类型为结构体，定义cmp规则
-//typedef char key_t[32];
-struct key_t{
-    char k[32];
-    key_t() {}
-    // 若外界有参数传入，则赋值给k
-    key_t(const char *str) {
-        strcpy(k, str);
-    }
-};
-//封装key比较规则，后面使用的key都是key_t类型
-inline int keycmp(const key_t &l, const key_t &r) {
-    return strcmp(l.k, r.k);
-}
-
-typedef int value_t;
-
-// 预定义 B+ tree信息
-#define BP_ORDER 4
 
 //B+ tree的元数据
 struct meta_t {
@@ -43,17 +22,19 @@ struct meta_t {
 // 内部节点的index segment
 struct index_t {
     key_t key;
-    off_t child; // the offset of index in one internal node
+    int child; // the offset of index in one internal node
 };
 
 // 内部节点的block组织形式，一个block指向下面的孩子节点
 /**
  * internal node block
- * | size_t n | key_t key, size_t child | key_t key, size_t child | ... |
+ * | int parent | size_t n | key_t key, int child | ... |
 */
 struct internal_node_t {
+    int parent; //额外记录父节点的offset
     size_t n; // 有多少孩子节点
     index_t children[BP_ORDER];
+    internal_node_t() {}
 };
 
 // 这里的record仅是一条简单的 k/v，key当主键
@@ -71,6 +52,7 @@ struct leaf_node_t {
     int next;
     size_t n; // 当前leaf block所有的record数量
     record_t children[BP_ORDER - 1];
+    leaf_node_t() {}
 };
 
 class bplus_tree {
@@ -78,11 +60,11 @@ public:
     // 构造函数
     bplus_tree(const char *path, bool force_empty = false);
 
-    //抽象函数CRUD
-    value_t search(const key_t &key) const;
-    value_t erase(const key_t &key);
-    value_t insert(const key_t &key, value_t value);
-    value_t update(const key_t &key, value_t value);
+    //abstract function CRUD
+    int search(const key_t &key, value_t *value) const;
+    int erase(const key_t &key);
+    int insert(const key_t &key, value_t value);
+    int update(const key_t &key, value_t value);
 
 public:
     char path[512];//文件读写路径

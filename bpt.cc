@@ -2,20 +2,19 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#define BINARY_SEARCH(array, n, key, i, ret) {\
-    size_t l = 0, r = n;\
-    size_t mid;\
-    while (l < n) {\
-        mid = l + ((r - l) >> 1);\
-        ret = keycmp(key, array[mid].key);\
-        if (ret < 0) r = mid;\
-        else if (ret > 0) l = mid;\
-        else break;\
-    }\
-    i = mid;\
-}
+#include <algorithm>
+
+//offset
+#define OFFSET_META 0
+#define OFFSET_INDEX OFFSET_META + sizeof(meta_t)
+#define OFFSET_BLOCK OFFSET_INDEX + meta.index_size
+#define OFFSET_END OFFSET_BLOCK + meta.leaf_node_num * sizeof(leaf_node_t)
+
 
 namespace bpt {
+
+OPERATOR_KEYCMP(index_t)
+OPERATOR_KEYCMP(record_t)
 
 /**
  * 构造函数, 顺便初始化fp和fp_level
@@ -26,15 +25,18 @@ bplus_tree::bplus_tree(const char *p, bool force_empty) : fp(NULL), fp_level(0) 
     bzero(path, sizeof(path));
     strcpy(path, p);
 
-    FILE *fp = fopen(path, "r");
-    fclose(fp); // 打开后关闭，但这里是否释放了fp对应的内存空间？
-    if (!fp || force_empty) {
-        //如果文件不存在的话，就新建一颗空树
-        init_from_empty();
-    } else {
-        // 如果路径p文件已经是一颗tree，那就同步下meta信息
-        snyc_meta();
+    // 这里加强了判断，如果外部虽然不强制为空，但path路径给的是错误的，需要手动纠正
+    if (!force_empty) {
+        FILE *fp = fopen(path, "r");
+        if (!fp) 
+            force_empty = true;
+        else 
+            fclose(fp);
     }
+    if (force_empty)
+        init_from_empty();
+    else
+        snyc_meta();
 }
 
 /**
@@ -70,12 +72,13 @@ off_t bplus_tree::search_leaf_offset(const key_t &key) const {
         internal_node_t node;
         map_index(&node, org);
 
-        size_t i;
-        int ret;
-        BINARY_SEARCH(node.children, node.n, key, i, ret);
-        org += node.children[i].child;//但这里也只有一个internal_node
-
-        --height;
+        // size_t i;
+        // int ret;
+        // BINARY_SEARCH(node.children, node.n, key, i, ret);
+        //org += node.children[i].child;//但这里也只有一个internal_node
+        index_t *r = std::lower_bound(node.children, node.children + node.n, key);
+        org += r->child;
+        --height; // 这里每层好像只有一个节点
     }
     return offset;
 }
@@ -83,6 +86,9 @@ off_t bplus_tree::search_leaf_offset(const key_t &key) const {
 void bplus_tree::open_file() const {
     if (fp_level == 0) {
         fp = fopen(path, "rb+");
+        if (!fp) { // maybe遇到意外情况，没有正常获得fp指针
+            fp = fopen(path, "wb+");
+        }
     }
     ++fp_level;
 }
@@ -99,6 +105,7 @@ void bplus_tree::close_file() const {
 void bplus_tree::snyc_meta() {
     open_file();
     // 从fp里读meta信息，就放在开头
+    fseek(fp, 0, SEEK_SET);
     fread(&meta, sizeof(meta), 1, fp);
     close_file();
 }
@@ -123,6 +130,7 @@ int bplus_tree::map_block(leaf_node_t *node, off_t offset) const {
 
 void bplus_tree::write_meta_to_disk() const {
     open_file();
+    fseek(fp, OFFSET_META, SEEK_SET);
     fwrite(&meta, sizeof(meta_t), 1, fp);
     close_file();
 }
@@ -139,39 +147,35 @@ void bplus_tree:: write_leaf_to_disk(leaf_node_t *leaf, off_t offset) {
 void bplus_tree:: write_new_leaf_to_disk(leaf_node_t *leaf) {
     open_file();
 
-    meta.leaf_node_num++;
-    write_meta_to_disk();
     if (leaf->next == -1) {
-        fseek(fp, 0, SEEK_SET); //为什么在末尾加新leaf，的文件偏移量是0?
+        // write new leaf at the end 新leaf物理上追加在end
+        write_leaf_to_disk(leaf, OFFSET_END);
     } else {
         // TODO 新的leaf节点插在中间
     }
 
-    fwrite(leaf, sizeof(leaf_node_t), 1, fp);
+    // increase the leaf counter
+    meta.leaf_node_num++;
+    write_meta_to_disk();
     close_file();
 }
-
-value_t bplus_tree::search(const key_t &key) const {
+//当前test只关心 function是否执行成功
+int bplus_tree::search(const key_t &key, value_t *value) const {
     leaf_node_t leaf;
     // 定位到指定的leaf block
     map_block(&leaf, search_leaf_offset(key));
-
-    size_t i;
-    int ret;
-    // 在当前的leaf block里顺序遍历，O(n)比较key值
-    // for (i = 0; i < leaf.n; ++i) {
-    //     //又已知已经有序，到第一个>=key的可以提前停止
-    //     // FIX
-    //     if ((ret = keycmp(leaf.children[i].key, key)) > 0)
-    //         break;
-    // }
-    BINARY_SEARCH(leaf.children, leaf.n, key, i, ret);
-    // 这里>情况终止的value_t()是什么？
-    return ret == 0 ? leaf.children[i].value : value_t();
+    // 根据key找到record
+    record_t *record = std::lower_bound(leaf.children, leaf.children + leaf.n, key);
+    if (record != leaf.children + leaf.n) {
+        *value = record->value;
+        return keycmp(record->key, key);
+    } else {
+        return -1;
+    }
 }
 
 
-value_t bplus_tree::insert(const key_t &key, value_t value) {
+int bplus_tree::insert(const key_t &key, value_t value) {
     leaf_node_t leaf;
     map_block(&leaf, search_leaf_offset(key));
     
@@ -179,26 +183,17 @@ value_t bplus_tree::insert(const key_t &key, value_t value) {
         // 插入的情况正好满了，需split
         // TODO split when full
     } else {
-        size_t i;
-        int ret = -1;
-        // 插入到哪里?先顺序遍历
-        // for (i = 0; i < leaf.n; ++i) {
-        //     if ((ret = keycmp(leaf.children[i].key, key)) > 0)
-        //         break;
-        // }
-        BINARY_SEARCH(leaf.children, leaf.n, key, i, ret);
-
-        // if 已经有相同的key了，直接返回value，不允许插入
-        if (ret == 0) return leaf.children[i].value;
-        // 如果插入的pos在中间，则需移动[i+1, leaf.n)之间的record,往后搬
-        if (i < leaf.n) {
-            for (size_t j = leaf.n; j > i; --j) {
-                // 这里肯定不会越界，line47已经判定了
-                leaf.children[j] = leaf.children[j - 1];
-            }
+        // insert into array when leaf is not full
+        record_t *r = std::upper_bound(leaf.children, leaf.children + leaf.n, key);
+        if (r != leaf.children + leaf.n) {
+            // same key?
+            if (keycmp(r->key, key) == 0)
+                return 1;
+            // 后面的统一往后移
+            std::copy(r, leaf.children + leaf.n, r + 1);
         }
-        leaf.children[i].key = key;
-        leaf.children[i].value = value;
+        r->key = key;
+        r->value = value;
         leaf.n++;
     }
     // insert 后 save一下
