@@ -16,7 +16,10 @@ struct meta_t {
     size_t key_size; // key的大小
     size_t internal_node_num; // 内部所有节点的数量
     size_t leaf_node_num; // 叶子节点的刷零
-    size_t height; // 包括叶子节点那层的树高
+    size_t height; // 包括叶子节点那层的树高,root's height = 1
+    size_t index_slot; // where to store new index
+    size_t block_slot; // where to store new block
+    off_t root_offset; // where is the root of internal nodes;
 };
 
 // 内部节点的index segment
@@ -48,10 +51,10 @@ struct record_t {
  * | int prev | int next | size_t n | size_t i, key_t key, value_t value | ... |
 */
 struct leaf_node_t {
-    int pre;
-    int next;
+    int parent; // parent node offset, why don't continue to use prev?
+    int next; // next leaf
     size_t n; // 当前leaf block所有的record数量
-    record_t children[BP_ORDER - 1];
+    record_t children[BP_ORDER];
     leaf_node_t() {}
 };
 
@@ -63,8 +66,8 @@ public:
     //abstract function CRUD
     int search(const key_t &key, value_t *value) const;
     int erase(const key_t &key);
-    int insert(const key_t &key, value_t value);
-    int update(const key_t &key, value_t value);
+    int insert(const key_t &key, const value_t &value);
+    int update(const key_t &key, const value_t &value);
 
 public:
     char path[512];//文件读写路径
@@ -74,29 +77,101 @@ public:
     // 构建一个空树
     void init_from_empty();
 
-    // stdio里的把long typedef了
-    // 根据key定位leaf，需调用read模块的map
-    off_t search_leaf_offset(const key_t &key) const;
-    int search_leaf(const key_t &key, leaf_node_t *leaf) const {
-        return map_block(leaf, search_leaf_offset(key));
-    }
+    // find index offset
+    off_t search_index(const key_t &key) const;
+    // find leaf offset
+    off_t search_leaf(const key_t &key) const;
+    
+    // 以下三个函数 为节点做split用
+    // insert into leaf without split
+    void insert_leaf_no_split(leaf_node_t *leaf, const key_t &key, const value_t &value);
+    // add key to the internal node
+    int insert_key_to_index(int offset, key_t key, off_t old, off_t after);
+
+    void insert_key_to_index_no_split(internal_node_t *node, const key_t &key, off_t value);
+
+
+    // find leaf operation
+    // off_t search_leaf_offset(const key_t &key) const;
+    // int search_leaf(const key_t &key, leaf_node_t *leaf) const {
+    //     return map_block(leaf, search_leaf_offset(key));
+    // }
     
     // multi-level文件操作 multable关键词突破const的限制，可处于一种可变状态
     mutable FILE *fp;
     mutable int fp_level; // 这参数啥意思？
-    inline void open_file() const;
-    inline void close_file() const;
+    void open_file() const {
+        if (fp_level == 0) {
+        fp = fopen(path, "rb+");
+        if (!fp) { // maybe遇到意外情况，没有正常获得fp指针
+            fp = fopen(path, "wb+");
+        }
+    }
+        ++fp_level;
+    }
+    void close_file() const {
+        if (fp_level == 1) {
+        fclose(fp);
+    }
+        --fp_level;
+    }
 
-    // 读写data 和disk的交互都是站在tree的逻辑视角，以node为单位
-    void snyc_meta();
-    int map_index(internal_node_t *node, off_t offset) const;
-    int map_block(leaf_node_t *leaf, off_t offset) const;
+    // alloc one leaf from disk
+    off_t alloc(leaf_node_t *leaf) {
+        leaf->parent = leaf->next = -1;
+        leaf->n = 0;
+        meta.leaf_node_num++;
+        meta.block_slot++;
+        return sizeof(leaf_node_t) * (meta.block_slot - 1);
+    }
+    // alloc one index from disk
+    off_t alloc(internal_node_t *node) {
+        node->parent = -1;
+        node->n = 0;
+        meta.internal_node_num++;
+        meta.index_slot++;
+        return sizeof(internal_node_t) * (meta.index_slot - 1);
+    }
+    // 手动释放空间
+    off_t unalloc(leaf_node_t *leaf);
+    off_t unalloc(internal_node_t *node);
 
-    // write 写操作我们的视角关注于record，都放于leaf
-    void write_meta_to_disk() const;
-    void write_leaf_to_disk(leaf_node_t *leaf, off_t offset);
-    void write_new_leaf_to_disk(leaf_node_t *leaf);
-    void snyc_leaf_to_disk(leaf_node_t *leaf) const;//手动同步leaf的信息
+    // read block from disk
+    template<class T>
+    void rmap(T *block, off_t offset) const {
+        open_file();
+        fseek(fp, offset, SEEK_SET);
+        fread(block, sizeof(T), 1, fp);
+        close_file();
+    }
+    // write block to disk
+    template<class T>
+    void runmap(T *block, off_t offset) const {
+        open_file();
+        fseek(fp, offset, SEEK_SET);
+        fwrite(block, sizeof(T), 1, fp);
+        close_file();
+    }
+
+    void map(leaf_node_t *leaf, off_t offset) const {
+        rmap(leaf, offset + OFFSET_BLOCK);
+    }
+    void map(internal_node_t *node, off_t offset) const {
+        rmap(node, offset + OFFSET_INDEX);
+    }
+    void map(meta_t *m) const {
+        rmap(m, OFFSET_META);
+    }
+
+    void unmap(leaf_node_t *leaf, off_t offset) const {
+        runmap(leaf, offset + OFFSET_BLOCK);
+    }
+    void unmap(internal_node_t *node, off_t offset) const {
+        runmap(node, offset + OFFSET_INDEX);
+    }
+    void unmap(meta_t *m) const {
+        runmap(m, OFFSET_META);
+    }
 };
 
 }

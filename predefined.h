@@ -6,7 +6,16 @@
 namespace bpt {
 
 // set Bplus-tree index/record 为4个一组
-#define BP_ORDER 4
+#ifndef BP_ORDER
+    #define BP_ORDER 4
+#endif
+
+//offset
+#define OFFSET_META 0
+#define OFFSET_INDEX OFFSET_META + sizeof(meta_t)
+#define OFFSET_INDEX_END OFFSET_INDEX + meta.internal_node_num * sizeof(internal_node_t)
+#define OFFSET_BLOCK OFFSET_INDEX + meta.index_size
+#define OFFSET_END OFFSET_BLOCK + meta.leaf_node_num * sizeof(leaf_node_t)
 
 typedef int value_t;
 // 扩展key_t类型为结构体，定义cmp规则
