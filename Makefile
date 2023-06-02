@@ -25,7 +25,7 @@ endif
 #OBJ = bpt.o util/cli.o
 #PRGNAME = bpt_cli
 OBJ = bpt.o test.o
-PRGNAME = bpt
+PRGNAME = bpt_unit_test
 
 #DUMP_OBJ = bpt.o util/dump_numbers.o
 #DUMPPRGNAME = bpt_dump_numbers
@@ -33,7 +33,7 @@ PRGNAME = bpt
 #all: $(DUMPPRGNAME) $(PRGNAME)
 all: ${PRGNAME}
 run:
-	./bpt
+	./bpt_unit_test
 # test:
 # 	@-rm bpt_unit_test
 # 	$(MAKE) TEST="-DUNIT_TEST" bpt_unit_test
@@ -58,7 +58,7 @@ distclean: clean
 dep:
 	$(CC) -MM *.cc
 
-bpt: $(OBJ)
+bpt_unit_test: $(OBJ)
 	$(QUIET_LINK)$(CXX) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(CCLINK)
 #bpt_cli: $(OBJ)
 #	$(QUIET_LINK)$(CXX) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(CCLINK)
@@ -75,8 +75,8 @@ bpt: $(OBJ)
 	$(QUIET_CC)$(CXX) -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) $<
 
 # Deps (use make dep to generate this)
-bpt.o: bpt.cc bpt.h
-test.o: test.cc bpt.h
+bpt.o: bpt.cc bpt.h predefined.h
+test.o: test.cc bpt.h predefined.h
 #bpt.o: bpt.cc bpt.h predefined.h
 #cli.o: cli.cc bpt.h predefined.h
 #dump_numbers.o: dump_numbers.cc bpt.h predefined.h

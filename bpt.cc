@@ -31,7 +31,7 @@ bplus_tree::bplus_tree(const char *p, bool force_empty) : fp(NULL), fp_level(0) 
     if (force_empty)
         init_from_empty();
     else
-        map(&meta);
+        map(&meta, OFFSET_META);
 }
 
 /**
@@ -41,21 +41,19 @@ void bplus_tree::init_from_empty() {
     // init default meta data
     bzero(&meta, sizeof(meta_t));
     meta.order = BP_ORDER;
-    // 预分配128个内部节点
-    meta.index_size = sizeof(internal_node_t) * 128;
+   
     meta.value_size = sizeof(value_t);
     meta.key_size = sizeof(key_t);
     meta.height = 1;
-    meta.index_slot = 0;
-    meta.block_slot = 0;
+    meta.slot = OFFSET_BLOCK;
     // init root node
     internal_node_t root;
     meta.root_offset = alloc(&root); 
     // init empty leaf
     leaf_node_t leaf; // 建立双向关系
     root.children[0].child = alloc(&leaf); // leaf is the first child of root
-    leaf.parent = meta.root_offset; // leaf's parent is root
-    unmap(&meta);
+
+    unmap(&meta, OFFSET_META);
     unmap(&root, meta.root_offset);
     unmap(&leaf, root.children[0].child);
 }
@@ -77,9 +75,9 @@ off_t bplus_tree::search_index(const key_t &key) const {
 
 
 // 进一步调用 search_index
-off_t bplus_tree::search_leaf(const key_t &key) const {
+off_t bplus_tree::search_leaf(off_t index, const key_t &key) const {
     internal_node_t node;
-    map(&node, search_index(key));
+    map(&node, index);
 
     index_t *idx = std::upper_bound(node.children, node.children + node.n, key);
     return idx->child;
@@ -89,7 +87,6 @@ off_t bplus_tree::search_leaf(const key_t &key) const {
 //当前test只关心 function是否执行成功
 int bplus_tree::search(const key_t &key, value_t *value) const {
     leaf_node_t leaf;
-    // map_block(&leaf, search_leaf_offset(key));
     map(&leaf, search_leaf(key));
     // 根据key找到record
     record_t *record = std::lower_bound(leaf.children, leaf.children + leaf.n, key);
@@ -103,9 +100,13 @@ int bplus_tree::search(const key_t &key, value_t *value) const {
 
 
 int bplus_tree::insert(const key_t &key, const value_t &value) {
+    // leaf_node_t leaf;
+    // off_t offset = search_leaf(key);
+    // map(&leaf, offset);
+
+    off_t parent = search_index(key); // 下面的search_leaf本身就会再次调用search_index，为什么这次修改要抽出来写？
+    off_t offset = search_leaf(parent, key); // 那干脆不要去掉leaf_node的parent属性好了
     leaf_node_t leaf;
-    // map_block(&leaf, search_leaf_offset(key));
-    off_t offset = search_leaf(key);
     map(&leaf, offset);
     
     if (leaf.n == meta.order) {
@@ -120,7 +121,7 @@ int bplus_tree::insert(const key_t &key, const value_t &value) {
         if (place_right) {
             point++;
         }
-        // split
+        // 完成原始leaf的split
         std::copy(leaf.children + point, leaf.children + leaf.n, new_leaf.children);
         new_leaf.n = leaf.n - point;
         leaf.n = point;
@@ -132,9 +133,11 @@ int bplus_tree::insert(const key_t &key, const value_t &value) {
             insert_leaf_no_split(&leaf, key, value);
         }
         //把右孩子的第一个当成新的key作为internal_node的索引
-        new_leaf.parent = leaf.parent = insert_key_to_index(
-            leaf.parent, new_leaf.children[0].key, offset, leaf.next);
-        unmap(&meta);
+        // new_leaf.parent = leaf.parent = insert_key_to_index(
+        //     leaf.parent, new_leaf.children[0].key, offset, leaf.next);
+        insert_key_to_index(parent, new_leaf.children[0].key, offset, leaf.next, true);
+        // save leafs
+        unmap(&meta, OFFSET_META);
         unmap(&leaf, offset);
         unmap(&new_leaf, leaf.next);//insert_key_to_index()写入的leaf.next
 
@@ -156,10 +159,9 @@ void bplus_tree::insert_leaf_no_split(leaf_node_t *leaf, const key_t &key, const
     leaf->n++;
 }
 
-int bplus_tree::insert_key_to_index(int offset, key_t key, off_t old, off_t after) {
-    assert(offset >= -1);
+int bplus_tree::insert_key_to_index(off_t offset, const key_t &key, off_t old, off_t after, bool is_leaf) {
 
-    if (offset == -1) {
+    if (offset == 0) { // init a leaf by noting parent with 0
         // create new root node
         internal_node_t root;
         meta.root_offset = alloc(&root);
@@ -169,7 +171,7 @@ int bplus_tree::insert_key_to_index(int offset, key_t key, off_t old, off_t afte
         root.children[0].key = key;
         root.children[0].child = old;
         root.children[1].child = after;
-        unmap(&meta);
+        unmap(&meta, OFFSET_META);
         unmap(&root, meta.root_offset);
         return meta.root_offset;
     }
@@ -189,30 +191,54 @@ int bplus_tree::insert_key_to_index(int offset, key_t key, off_t old, off_t afte
         if (place_right) {
             point++;
         }
+
+        // prevent key being the right `middle_key`
+        // eg：insert 48 into | 42 | 45 | 6 | |
+        if (place_right && keycmp(key, node.children[point].key) < 0)
+            point--;
+        key_t middle_key = node.children[point].key;
+
         // split
-        //there are 'node.n + 1' elements in node.children
+        // there are 'node.n + 1' elements in node.children
         std::copy(node.children + point + 1, node.children + node.n + 1, new_node.children);
         new_node.n = node.n - point - 1;
         node.n = point;
 
+        // update children's parent
+        if (!is_leaf) {
+            reset_index_children_parent(new_node.children, new_node.children + new_node.n + 1, new_node_offset);
+        }
         // put the new key
+        int return_parent;
         if (place_right) {
+            return_parent = new_node_offset;
             insert_key_to_index_no_split(&new_node, key, after);
         } else {
+            return_parent = offset;
             insert_key_to_index_no_split(&node, key, after);
         }
 
         // give the middle key to parent
         // middle key's child is reserved in node.children[node.n]
-        new_node.parent = node.parent = insert_key_to_index(node.parent, node.children[point].key, offset, new_node_offset); // 递归调用
-        unmap(&meta);
+        new_node.parent = node.parent = insert_key_to_index(node.parent, middle_key, offset, new_node_offset, false); // 递归调用
+        unmap(&meta, OFFSET_META);
         unmap(&node, offset);
         unmap(&new_node, new_node_offset);
+        return return_parent;
     } else {
         insert_key_to_index_no_split(&node, key, after);
         unmap(&node, offset);
+        return offset;
     }
-    return offset;
+}
+void bplus_tree::reset_index_children_parent(index_t *begin, index_t *end, off_t parent) {
+    internal_node_t node;
+    while (begin != end) {
+        map(&node, begin->child);
+        node.parent = parent;
+        unmap(&node, begin->child);
+        begin++;
+    }
 }
 
 void bplus_tree::insert_key_to_index_no_split(internal_node_t *node, const key_t &key, off_t value) {
@@ -222,8 +248,8 @@ void bplus_tree::insert_key_to_index_no_split(internal_node_t *node, const key_t
 
     // insert this key
     idx->key = key;
-    idx->child = (idx + 1)->child;
-    (idx + 1)->child = value;
+    idx->child = (idx + 1)->child; // I think 这里是有问题的，why 要交换这两个node指向的孩子？
+    (idx + 1)->child = value; // 我认为经过深copy后idx+1的child也已经copy过去了，直接赋值idx处的key和value就行
     
     node->n++;
 }
