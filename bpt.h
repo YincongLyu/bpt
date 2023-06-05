@@ -76,7 +76,11 @@ public:
     int insert(const key_t &key, const value_t &value);
     int update(const key_t &key, const value_t &value);
 
+#ifndef UNIT_TEST
+private:
+#else
 public:
+#endif
     char path[512];//文件读写路径
 
     meta_t meta;
@@ -99,7 +103,7 @@ public:
     // insert into leaf without split
     void insert_leaf_no_split(leaf_node_t *leaf, const key_t &key, const value_t &value);
     // add key to the internal node
-    int insert_key_to_index(off_t offset, const key_t &key, off_t old, off_t after, bool is_leaf);
+    void insert_key_to_index(off_t offset, const key_t &key, off_t old, off_t after, bool is_leaf);
 
     void insert_key_to_index_no_split(internal_node_t *node, const key_t &key, off_t value);
     // 统一修改 internal node里一段的parent，在split的时候会出现前后节点连续赋值

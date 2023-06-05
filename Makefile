@@ -20,24 +20,22 @@ QUIET_CC = @printf '    %b %b\n' $(CCCOLOR)CXX$(ENDCOLOR) $(SRCCOLOR)$@$(ENDCOLO
 QUIET_LINK = @printf '    %b %b\n' $(LINKCOLOR)LINK$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR);
 endif
 
-#TESTPRGNAME = bpt_unit_test
 
-#OBJ = bpt.o util/cli.o
-#PRGNAME = bpt_cli
-OBJ = bpt.o test.o
-PRGNAME = bpt_unit_test
+DUMP_OBJ = bpt.o dump_numbers.o
+DUMPPRGNAME = bpt_dump_numbers
 
-#DUMP_OBJ = bpt.o util/dump_numbers.o
-#DUMPPRGNAME = bpt_dump_numbers
+UNIT_TEST_OBJ = bpt.o unit_test.o
+TESTPRGNAME = bpt_unit_test
 
-#all: $(DUMPPRGNAME) $(PRGNAME)
-all: ${PRGNAME}
-run:
+
+all: ${DUMPPRGNAME}
+test:
+	$(MAKE) clean
+	$(MAKE) TEST="-DUNIT_TEST" bpt_unit_test
 	./bpt_unit_test
-# test:
-# 	@-rm bpt_unit_test
-# 	$(MAKE) TEST="-DUNIT_TEST" bpt_unit_test
-# 	./bpt_unit_test
+
+run:
+	./bpt
 
 gprof:
 	$(MAKE) PROF="-pg"
@@ -49,8 +47,7 @@ noopt:
 	$(MAKE) OPTIMIZATION=""
 
 clean:
-	rm -rf $(PRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov
-#	rm -rf $(PRGNAME) $(TESTPRGNAME) $(DUMPPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov util/*.o
+	rm -rf $(PRGNAME) $(TESTPRGNAME) $(DUMPPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov
 
 distclean: clean
 	$(MAKE) clean
@@ -63,21 +60,18 @@ bpt_unit_test: $(OBJ)
 #bpt_cli: $(OBJ)
 #	$(QUIET_LINK)$(CXX) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(CCLINK)
 
-#bpt_unit_test:
-#	$(QUIET_LINK)$(CXX) -o bpt_unit_test $(CCOPT) $(DEBUG) util/unit_test.cc bpt.cc $(TEST) $(CCLINK) 
+bpt_unit_test: ${UNIT_TEST_OBJ}
+	$(QUIET_LINK)$(CXX) -o ${TESTPRGNAME} $(CCOPT) $(DEBUG) ${UNIT_TEST_OBJ} $(CCLINK) 
 
-#bpt_dump_numbers: $(DUMP_OBJ)
-#	$(QUIET_LINK)$(CXX) -o $(DUMPPRGNAME) $(CCOPT) $(DEBUG) $(DUMP_OBJ) $(CCLINK)
+bpt_dump_numbers: $(DUMP_OBJ)
+	$(QUIET_LINK)$(CXX) -o $(DUMPPRGNAME) $(CCOPT) $(DEBUG) $(DUMP_OBJ) $(CCLINK)
 
 %.o: %.cc
-#目前没有test功能
-#	$(QUIET_CC)$(CXX) -o $@ -c $(CFLAGS) $(TEST) $(DEBUG) $(COMPILE_TIME) $<
-	$(QUIET_CC)$(CXX) -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) $<
+	$(QUIET_CC)$(CXX) -c $(CFLAGS) $(TEST) $(DEBUG) $(COMPILE_TIME) $<
 
 # Deps (use make dep to generate this)
 bpt.o: bpt.cc bpt.h predefined.h
-test.o: test.cc bpt.h predefined.h
-#bpt.o: bpt.cc bpt.h predefined.h
+unit_test.o: unit_test.cc bpt.h predefined.hb # rename test.cc to unit_test.cc
+dump_numbers.o: dump_numbers.cc bpt.h predefined.h # add dump_numbers.cc
 #cli.o: cli.cc bpt.h predefined.h
-#dump_numbers.o: dump_numbers.cc bpt.h predefined.h
-#unit_test.o: unit_test.cc bpt.h predefined.h
+

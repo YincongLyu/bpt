@@ -5,14 +5,18 @@
 
 namespace bpt {
 
+#ifndef UNIT_TEST
+    #define BP_ORDER 20
+#else
 // set Bplus-tree index/record 为4个一组
- #define BP_ORDER 4
+    #define BP_ORDER 4
+#endif
 
 
 typedef int value_t;
 // 扩展key_t类型为结构体，定义cmp规则
 struct key_t{
-    char k[8];
+    char k[16];
     // 若外界有参数传入，则赋值给k
     key_t(const char *str = "") {
         bzero(k, sizeof(k));

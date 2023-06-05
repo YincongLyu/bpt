@@ -20,18 +20,18 @@ bplus_tree::bplus_tree(const char *p, bool force_empty) : fp(NULL), fp_level(0) 
     bzero(path, sizeof(path));
     strcpy(path, p);
 
-    // 这里加强了判断，如果外部虽然不强制为空，但path路径给的是错误的，需要手动纠正
-    if (!force_empty) {
-        FILE *fp = fopen(path, "r");
-        if (!fp) 
-            force_empty = true;
-        else 
-            fclose(fp);
-    }
-    if (force_empty)
+    if (force_empty) {
+        // create empty tree if file doesn't exist
         init_from_empty();
-    else
+        FILE *fp = fopen(path, "w");
+        fprintf(fp, "");
+        fclose(fp);
+    }
+    else {
+        // read tree from file
         map(&meta, OFFSET_META);
+    }
+        
 }
 
 /**
@@ -159,7 +159,7 @@ void bplus_tree::insert_leaf_no_split(leaf_node_t *leaf, const key_t &key, const
     leaf->n++;
 }
 
-int bplus_tree::insert_key_to_index(off_t offset, const key_t &key, off_t old, off_t after, bool is_leaf) {
+void bplus_tree::insert_key_to_index(off_t offset, const key_t &key, off_t old, off_t after, bool is_leaf) {
 
     if (offset == 0) { // init a leaf by noting parent with 0
         // create new root node
@@ -173,7 +173,12 @@ int bplus_tree::insert_key_to_index(off_t offset, const key_t &key, off_t old, o
         root.children[1].child = after;
         unmap(&meta, OFFSET_META);
         unmap(&root, meta.root_offset);
-        return meta.root_offset;
+        
+        // update children's parent
+        if (!is_leaf) {
+            reset_index_children_parent(root.children, root.children + root.n + 1, meta.root_offset);
+        }
+        return;
     }
 
     internal_node_t node;
@@ -202,33 +207,31 @@ int bplus_tree::insert_key_to_index(off_t offset, const key_t &key, off_t old, o
         // there are 'node.n + 1' elements in node.children
         std::copy(node.children + point + 1, node.children + node.n + 1, new_node.children);
         new_node.n = node.n - point - 1;
+        new_node.parent = node.parent;
         node.n = point;
 
+        // put the new key
+        if (place_right) 
+            insert_key_to_index_no_split(&new_node, key, after);
+        else
+            insert_key_to_index_no_split(&node, key, after);
+        unmap(&meta, OFFSET_META);
+        unmap(&node, offset);
+        unmap(&new_node, new_node_offset);
         // update children's parent
         if (!is_leaf) {
             reset_index_children_parent(new_node.children, new_node.children + new_node.n + 1, new_node_offset);
         }
-        // put the new key
-        int return_parent;
-        if (place_right) {
-            return_parent = new_node_offset;
-            insert_key_to_index_no_split(&new_node, key, after);
-        } else {
-            return_parent = offset;
-            insert_key_to_index_no_split(&node, key, after);
-        }
+        
 
         // give the middle key to parent
         // middle key's child is reserved in node.children[node.n]
-        new_node.parent = node.parent = insert_key_to_index(node.parent, middle_key, offset, new_node_offset, false); // 递归调用
-        unmap(&meta, OFFSET_META);
-        unmap(&node, offset);
-        unmap(&new_node, new_node_offset);
-        return return_parent;
+        insert_key_to_index(node.parent, middle_key, offset, new_node_offset, false); // 递归调用
+        
+  
     } else {
         insert_key_to_index_no_split(&node, key, after);
         unmap(&node, offset);
-        return offset;
     }
 }
 void bplus_tree::reset_index_children_parent(index_t *begin, index_t *end, off_t parent) {
