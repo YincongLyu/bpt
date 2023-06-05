@@ -118,13 +118,10 @@ public:
     // multi-level文件操作 multable关键词突破const的限制，可处于一种可变状态
     mutable FILE *fp;
     mutable int fp_level; // 这参数啥意思？
-    void open_file() const {
+    void open_file(const char *mode = "rb+") const {
         if (fp_level == 0) {
-        fp = fopen(path, "rb+");
-        if (!fp) { // maybe遇到意外情况，没有正常获得fp指针
-            fp = fopen(path, "wb+");
+            fp = fopen(path, mode);
         }
-    }
         ++fp_level;
     }
     void close_file() const {
@@ -161,19 +158,21 @@ public:
 
     // read block from disk
     template<class T>
-    void map(T *block, off_t offset) const {
+    int map(T *block, off_t offset) const {
         open_file();
         fseek(fp, offset, SEEK_SET);
-        fread(block, sizeof(T), 1, fp);
+        size_t rd = fread(block, sizeof(T), 1, fp);
         close_file();
+        return rd - 1;
     }
     // write block to disk
     template<class T>
-    void unmap(T *block, off_t offset) const {
+    int unmap(T *block, off_t offset) const {
         open_file();
         fseek(fp, offset, SEEK_SET);
-        fwrite(block, sizeof(T), 1, fp);
+        size_t wd = fwrite(block, sizeof(T), 1, fp);
         close_file();
+        return wd - 1;
     }
 
 };
