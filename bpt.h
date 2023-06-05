@@ -27,6 +27,7 @@ struct meta_t {
     off_t slot; // where to store new block, is a location presented by offset, differ from 
 
     off_t root_offset; // where is the root of internal nodes;
+    off_t leaf_offset; // where is the first leaf
 };
 
 // 内部节点的index segment
@@ -72,6 +73,8 @@ public:
 
     //abstract function CRUD
     int search(const key_t &key, value_t *value) const;
+    // what does the last argument mean?
+    int search_range(const key_t &left, const key_t &right, value_t *values, size_t max, key_t *last = NULL) const;
     int erase(const key_t &key);
     int insert(const key_t &key, const value_t &value);
     int update(const key_t &key, const value_t &value);

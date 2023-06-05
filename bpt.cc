@@ -52,8 +52,9 @@ void bplus_tree::init_from_empty() {
     meta.root_offset = alloc(&root); 
     // init empty leaf
     leaf_node_t leaf; // 建立双向关系
-    root.children[0].child = alloc(&leaf); // leaf is the first child of root
-
+    leaf.next = 0;
+    meta.leaf_offset = root.children[0].child = alloc(&leaf); // leaf is the first child of root
+    //save
     unmap(&meta, OFFSET_META);
     unmap(&root, meta.root_offset);
     unmap(&leaf, root.children[0].child);
@@ -99,6 +100,48 @@ int bplus_tree::search(const key_t &key, value_t *value) const {
     }
 }
 
+int bplus_tree::search_range(const key_t &left, const key_t &right, value_t *values, size_t max, key_t *last) const {
+
+    if (keycmp(left, right) > 0) {
+        return -1;
+    }
+    off_t off_left = search_leaf(left);
+    off_t off_right = search_leaf(right);
+
+    off_t off = off_left; // 第一个leaf的off是从off_left开始的
+    size_t i = 0;
+    record_t *begin, *end;
+    leaf_node_t leaf;
+
+    while (off != off_right && off != 0 && i < max) {
+        map(&leaf, off);
+        //start point
+        if (off_left == off)
+            begin = std::lower_bound(leaf.children, leaf.children + leaf.n, left);
+        else
+            begin = leaf.children;
+
+        //copy
+        end = leaf.children + leaf.n;
+        for (; begin != end && i < max; begin++, i++) {
+            values[i] = begin->value;
+        }
+        off = leaf.next;
+    }
+    // the last leaf, this is a corner case using while loop parameter
+    if (i < max) {
+        map(&leaf, off_right); // 左闭右开
+        begin = std::lower_bound(leaf.children, leaf.children + leaf.n, left); 
+        end = std::upper_bound(leaf.children, leaf.children + leaf.n, right);
+        for (; begin != end && i < max; begin++, i++) { // I suspect 是否会重复插入？当off_right不是一个leaf的offset头
+            values[i] = begin->value;
+        }
+    }
+    if (last != NULL && i == max && begin != end) {
+        *last = begin->key;
+    }
+    return i;
+}
 
 int bplus_tree::insert(const key_t &key, const value_t &value) {
     // leaf_node_t leaf;
@@ -111,9 +154,10 @@ int bplus_tree::insert(const key_t &key, const value_t &value) {
     map(&leaf, offset);
     
     if (leaf.n == meta.order) {
-        // 插入的情况正好满了，需split
+        // split when full
         // new sibling leaf
         leaf_node_t new_leaf;
+        new_leaf.next = leaf.next; // new leaf is followed tightly behind the leaf
         leaf.next = alloc(&new_leaf);
 
         // find even split point 决定key分到左孩子还是右孩子
@@ -133,14 +177,16 @@ int bplus_tree::insert(const key_t &key, const value_t &value) {
         } else {
             insert_leaf_no_split(&leaf, key, value);
         }
-        //把右孩子的第一个当成新的key作为internal_node的索引
-        // new_leaf.parent = leaf.parent = insert_key_to_index(
-        //     leaf.parent, new_leaf.children[0].key, offset, leaf.next);
-        insert_key_to_index(parent, new_leaf.children[0].key, offset, leaf.next, true);
+        
         // save leafs
         unmap(&meta, OFFSET_META);
         unmap(&leaf, offset);
         unmap(&new_leaf, leaf.next);//insert_key_to_index()写入的leaf.next
+
+        //把右孩子的第一个当成新的key作为internal_node的索引
+        // new_leaf.parent = leaf.parent = insert_key_to_index(
+        //     leaf.parent, new_leaf.children[0].key, offset, leaf.next);
+        insert_key_to_index(parent, new_leaf.children[0].key, offset, leaf.next, true);
 
     } else {
         insert_leaf_no_split(&leaf, key, value);
