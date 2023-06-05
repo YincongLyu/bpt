@@ -7,7 +7,6 @@
  * command: ./dump_numbers [file_path] [start] [end]
 */
 int main(int argc, char *argv[]) {
-    char path[512] = {0};
     int start;
     int end;
 
@@ -16,7 +15,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (argc > 1) strcpy(path, argv[1]);
     if (argc > 2) start = atoi(argv[2]);
     if (argc > 3) end = atoi(argv[3]);
     // 目前无效命令的格式，参数没有4个，以及start>=end
@@ -26,7 +24,7 @@ int main(int argc, char *argv[]) {
     }
 
     // generate numbers and insert into database
-    bpt::bplus_tree database("numbers.db", true);
+    bpt::bplus_tree database(argv[1], true);
     for (int i = start; i <= end; i++) {
         if (i % 1000 == 0) printf("%d\n", i);
         char key[16] = {0};

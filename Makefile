@@ -20,6 +20,8 @@ QUIET_CC = @printf '    %b %b\n' $(CCCOLOR)CXX$(ENDCOLOR) $(SRCCOLOR)$@$(ENDCOLO
 QUIET_LINK = @printf '    %b %b\n' $(LINKCOLOR)LINK$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR);
 endif
 
+OBJ = bpt.o cli.o
+PRGNAME = bpt_cli
 
 DUMP_OBJ = bpt.o dump_numbers.o
 DUMPPRGNAME = bpt_dump_numbers
@@ -28,14 +30,14 @@ UNIT_TEST_OBJ = bpt.o unit_test.o
 TESTPRGNAME = bpt_unit_test
 
 
-all: ${DUMPPRGNAME}
+all: ${DUMPPRGNAME} ${PRGNAME}
 test:
 	$(MAKE) clean
 	$(MAKE) TEST="-DUNIT_TEST" bpt_unit_test
 	./bpt_unit_test
 
 run:
-	./bpt
+	./bpt_unit_test
 
 gprof:
 	$(MAKE) PROF="-pg"
@@ -55,10 +57,8 @@ distclean: clean
 dep:
 	$(CC) -MM *.cc
 
-bpt_unit_test: $(OBJ)
+bpt_cli: $(OBJ)
 	$(QUIET_LINK)$(CXX) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(CCLINK)
-#bpt_cli: $(OBJ)
-#	$(QUIET_LINK)$(CXX) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(CCLINK)
 
 bpt_unit_test: ${UNIT_TEST_OBJ}
 	$(QUIET_LINK)$(CXX) -o ${TESTPRGNAME} $(CCOPT) $(DEBUG) ${UNIT_TEST_OBJ} $(CCLINK) 
@@ -71,7 +71,8 @@ bpt_dump_numbers: $(DUMP_OBJ)
 
 # Deps (use make dep to generate this)
 bpt.o: bpt.cc bpt.h predefined.h
-unit_test.o: unit_test.cc bpt.h predefined.hb # rename test.cc to unit_test.cc
+cli.o: cli.cc bpt.h predefined.h
+unit_test.o: unit_test.cc bpt.h predefined.h # rename test.cc to unit_test.cc
 dump_numbers.o: dump_numbers.cc bpt.h predefined.h # add dump_numbers.cc
-#cli.o: cli.cc bpt.h predefined.h
+
 

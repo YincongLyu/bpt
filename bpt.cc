@@ -23,9 +23,6 @@ bplus_tree::bplus_tree(const char *p, bool force_empty) : fp(NULL), fp_level(0) 
     if (force_empty) {
         // create empty tree if file doesn't exist
         init_from_empty();
-        FILE *fp = fopen(path, "w");
-        fprintf(fp, "");
-        fclose(fp);
     }
     else {
         // read tree from file
