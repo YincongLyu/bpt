@@ -100,12 +100,12 @@ int bplus_tree::search(const key_t &key, value_t *value) const {
     }
 }
 
-int bplus_tree::search_range(const key_t &left, const key_t &right, value_t *values, size_t max, key_t *last) const {
+int bplus_tree::search_range(key_t *left, const key_t &right, value_t *values, size_t max, key_t *next) const {
 
-    if (keycmp(left, right) > 0) {
+    if (left == NULL || keycmp(*left, right) > 0) {
         return -1;
     }
-    off_t off_left = search_leaf(left);
+    off_t off_left = search_leaf(*left);
     off_t off_right = search_leaf(right);
 
     off_t off = off_left; // 第一个leaf的off是从off_left开始的
@@ -117,7 +117,7 @@ int bplus_tree::search_range(const key_t &left, const key_t &right, value_t *val
         map(&leaf, off);
         //start point
         if (off_left == off)
-            begin = std::lower_bound(leaf.children, leaf.children + leaf.n, left);
+            begin = std::lower_bound(leaf.children, leaf.children + leaf.n, *left);
         else
             begin = leaf.children;
 
@@ -131,14 +131,22 @@ int bplus_tree::search_range(const key_t &left, const key_t &right, value_t *val
     // the last leaf, this is a corner case using while loop parameter
     if (i < max) {
         map(&leaf, off_right); // 左闭右开
-        begin = std::lower_bound(leaf.children, leaf.children + leaf.n, left); 
+        begin = std::lower_bound(leaf.children, leaf.children + leaf.n, *left); 
         end = std::upper_bound(leaf.children, leaf.children + leaf.n, right);
         for (; begin != end && i < max; begin++, i++) { // I suspect 是否会重复插入？当off_right不是一个leaf的offset头
             values[i] = begin->value;
         }
     }
-    if (last != NULL && i == max && begin != end) {
-        *last = begin->key;
+    // if (last != NULL && i == max && begin != end) {
+    //     *last = begin->key;
+    // }
+    if (next != NULL) {
+        if (i == max && begin != end) {
+            *next = true;
+            *left = begin->key;
+        } else {
+            *next = false;
+        }
     }
     return i;
 }

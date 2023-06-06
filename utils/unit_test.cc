@@ -1,7 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 
-#include "bpt.h"
+#include "../bpt.h"
 using bpt::bplus_tree;
 
 #define PRINT(a) printf("\033[32m%s\033[0m \033[32m%s\033[0m\n", a, "passed");
