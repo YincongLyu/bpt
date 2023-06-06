@@ -137,11 +137,10 @@ public:
         --fp_level;
     }
 
-    // alloc from disk, program with template
-    template<class T>
-    off_t dalloc(T *leaf) {
+    // alloc from disk
+    off_t dalloc(size_t size) {
         off_t slot = meta.slot;
-        meta.slot += sizeof(leaf_node_t);
+        meta.slot += size; // meta.slot指向下一位
         return slot;
     }
     // alloc one leaf from disk
@@ -149,7 +148,7 @@ public:
         leaf->next = 0;
         leaf->n = 0;
         meta.leaf_node_num += 1;
-        return dalloc(leaf);
+        return dalloc(sizeof(leaf_node_t));
     }
 
     // alloc one index from disk
@@ -157,11 +156,11 @@ public:
         node->parent = 0;
         node->n = 0;
         meta.internal_node_num += 1;
-        return dalloc(node);
+        return dalloc(sizeof(internal_node_t));
     }
     // 手动释放空间
-    off_t unalloc(leaf_node_t *leaf);
-    off_t unalloc(internal_node_t *node);
+    off_t unalloc(leaf_node_t *leaf) {}
+    off_t unalloc(internal_node_t *node) {}
 
     // read block from disk
     template<class T>
