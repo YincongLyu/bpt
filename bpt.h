@@ -6,7 +6,11 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#include "predefined.h"
+#ifndef UNIT_TEST
+    #include "predefined.h"
+#else
+    #include "utils/unit_test_predefined.h"
+#endif
 
 
 namespace bpt {

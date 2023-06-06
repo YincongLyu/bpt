@@ -4,8 +4,6 @@
 
 #include <algorithm>
 
-
-
 namespace bpt {
 
 OPERATOR_KEYCMP(index_t)

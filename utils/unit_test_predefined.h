@@ -6,7 +6,7 @@
 namespace bpt {
 
 
-#define BP_ORDER 20
+#define BP_ORDER 4
 
 
 typedef int value_t;
@@ -22,8 +22,7 @@ struct key_t{
 
 //封装key比较规则，后面使用的key都是key_t类型
 inline int keycmp(const key_t &l, const key_t &r) {
-    int x = strlen(l.k) - strlen(r.k);
-    return x == 0 ? strcmp(l.k, r.k) : x;
+    return strcmp(l.k, r.k);
 }
 
 // index and record, two type compare rule
